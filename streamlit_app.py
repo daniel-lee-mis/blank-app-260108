@@ -2,6 +2,47 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from urllib.parse import quote
+
+
+# -----------------------------
+# 배경 이미지 설정 함수
+# - 외부 URL 또는 로컬 파일(필요 시 base64 인코딩)로 배경을 설정할 수 있습니다.
+# - 여기서는 샘플 강아지 이미지를 외부 URL로 사용합니다.
+# - 읽기 편하도록 흰색 반투명 오버레이를 추가합니다.
+def set_background(image_url: str, repeat: bool = False, size: str = "cover"):
+    """페이지 전체에 배경 이미지를 적용합니다.
+
+    image_url: 외부 이미지 URL (또는 data URI)
+    repeat: 배경 이미지 반복 여부 (타일링)
+    size: background-size CSS 값 (예: 'cover', 'contain', '40px', 'auto')
+    """
+    repeat_css = "repeat" if repeat else "no-repeat"
+    css = f"""
+    <style>
+    .stApp {{
+        background-image: linear-gradient(rgba(255,255,255,0.6), rgba(255,255,255,0.6)), url("{image_url}");
+        background-repeat: {repeat_css};
+        background-size: {size};
+        background-attachment: fixed;
+        background-position: center;
+    }}
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
+
+# 강아지 배경 이미지 URL (원하시면 다른 이미지로 교체 가능)
+dog_image_url = (
+    "https://images.unsplash.com/photo-1517423440428-a5a00ad493e8"
+    "?auto=format&fit=crop&w=1350&q=80"
+)
+
+# 강아지 타일(이모지 SVG) data URI
+dog_svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72'><text x='50%' y='50%' font-size='48' dominant-baseline='middle' text-anchor='middle'>🐶</text></svg>"
+dog_tile_uri = "data:image/svg+xml;utf8," + quote(dog_svg)
+
+# 페이지 로드 시 배경 적용 (타일링)
+set_background(dog_tile_uri, repeat=True)
 
 # -----------------------------
 # Streamlit 요소 데모 페이지
@@ -14,7 +55,7 @@ st.set_page_config(
 )
 
 # 페이지 상단: 제목과 설명
-st.title("🎛️ Streamlit 요소 데모 페이지")
+st.title("🎛️ Streamlit 요소 데모 페이지(강아지배경)")
 st.write("이 페이지는 단일 페이지에 넣을 수 있는 Streamlit 요소들의 예시를 모아둔 학습용 데모입니다.")
 st.caption("각 코드 블록 위에 설명(각주)이 있으니 따라가며 실습하세요.")
 
