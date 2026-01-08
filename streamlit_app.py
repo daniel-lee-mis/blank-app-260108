@@ -10,7 +10,7 @@ from datetime import datetime
 # -----------------------------
 
 st.set_page_config(
-    page_title="Streamlit 요소 데모", page_icon="🎛️", layout="wide"
+    page_title="Streamlit 요소 데모 (제목 수정)", page_icon="🎛️", layout="wide"
 )
 
 # 페이지 상단: 제목과 설명
