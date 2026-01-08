@@ -1,204 +1,270 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-from datetime import datetime
-from urllib.parse import quote
+import random
+import time
+from datetime import timedelta
 
-
-# -----------------------------
-# 배경 이미지 설정 함수
-# - 외부 URL 또는 로컬 파일(필요 시 base64 인코딩)로 배경을 설정할 수 있습니다.
-# - 여기서는 샘플 강아지 이미지를 외부 URL로 사용합니다.
-# - 읽기 편하도록 흰색 반투명 오버레이를 추가합니다.
-def set_background(image_url: str, repeat: bool = False, size: str = "cover"):
-    """페이지 전체에 배경 이미지를 적용합니다.
-
-    image_url: 외부 이미지 URL (또는 data URI)
-    repeat: 배경 이미지 반복 여부 (타일링)
-    size: background-size CSS 값 (예: 'cover', 'contain', '40px', 'auto')
-    """
-    repeat_css = "repeat" if repeat else "no-repeat"
-    css = f"""
-    <style>
-    .stApp {{
-        background-image: linear-gradient(rgba(255,255,255,0.6), rgba(255,255,255,0.6)), url("{image_url}");
-        background-repeat: {repeat_css};
-        background-size: {size};
-        background-attachment: fixed;
-        background-position: center;
-    }}
-    </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
-
-# 강아지 배경 이미지 URL (원하시면 다른 이미지로 교체 가능)
-dog_image_url = (
-    "https://images.unsplash.com/photo-1517423440428-a5a00ad493e8"
-    "?auto=format&fit=crop&w=1350&q=80"
-)
-
-# 강아지 타일(이모지 SVG) data URI
-dog_svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72'><text x='50%' y='50%' font-size='48' dominant-baseline='middle' text-anchor='middle'>🐶</text></svg>"
-dog_tile_uri = "data:image/svg+xml;utf8," + quote(dog_svg)
-
-# 페이지 로드 시 배경 적용 (타일링)
-set_background(dog_tile_uri, repeat=True)
+st.set_page_config(page_title="5학년 암산 연습", page_icon="🧠", layout="centered")
 
 # -----------------------------
-# Streamlit 요소 데모 페이지
-# 모든 요소 예시와 학습용 각주(주석)를 포함합니다.
-# 실행: `streamlit run streamlit_app.py`
+# 5학년 대상 암산(mental math) 학습 앱
+# 기능:
+# - 난이도(쉬움/보통/어려움)
+# - 연산 선택(덧셈/뺄셈/곱셈/나눗셈)
+# - 문제 수와 시간 제한(선택 가능)
+# - 채점, 힌트, 정답/오답 기록, 통계
 # -----------------------------
 
-st.set_page_config(
-    page_title="Streamlit 요소 데모 (제목 수정)", page_icon="🎛️", layout="wide"
-)
+TITLE = "🧠 5학년 암산 연습"
+st.title(TITLE)
+st.write("짧고 집중된 문제로 암산 실력을 키워보세요. 각 문제를 가능한 빠르고 정확하게 푸는 것이 목표입니다.")
 
-# 페이지 상단: 제목과 설명
-st.title("🎛️ Streamlit 요소 데모 페이지(강아지배경)")
-st.write("이 페이지는 단일 페이지에 넣을 수 있는 Streamlit 요소들의 예시를 모아둔 학습용 데모입니다.")
-st.caption("각 코드 블록 위에 설명(각주)이 있으니 따라가며 실습하세요.")
+# 설정
+st.sidebar.header("설정 🔧")
+difficulty = st.sidebar.selectbox("난이도", ["쉬움", "보통", "어려움"])
+ops = st.sidebar.multiselect("연산 선택", ["덧셈", "뺄셈", "곱셈", "나눗셈"], default=["덧셈", "뺄셈", "곱셈"])
+num_questions = st.sidebar.number_input("문제 수", min_value=5, max_value=50, value=10)
+use_timer = st.sidebar.checkbox("시간 제한 사용 (문제별)", value=False)
+per_question_time = st.sidebar.slider("문제별 시간(초)", min_value=5, max_value=60, value=20)
+show_hints = st.sidebar.checkbox("힌트 보기", value=True)
 
-# 간단한 마크다운과 코드 표시
-st.markdown("### 기본 텍스트 / 마크다운 / 코드 / 라텍스")
-# 각주: `st.write`는 자동으로 타입을 판단해 렌더링합니다.
-st.write("일반 텍스트 출력: Hello Streamlit!")
-st.code("print('Hello Streamlit')", language="python")
-st.latex(r"E = mc^2")  # 각주: KaTeX 수식 표시
+# 난이도별 숫자 범위
+RANGES = {
+    "쉬움": (0, 50),
+    "보통": (0, 200),
+    "어려움": (0, 1000),
+}
+min_val, max_val = RANGES[difficulty]
 
-# 상태 메시지들: success, info, warning, error
-st.success("성공 메시지 예시")
-st.info("정보 메시지 예시")
-st.warning("경고 메시지 예시")
-st.error("오류 메시지 예시")
+# 세션 상태 초기화
+if "problems" not in st.session_state:
+    st.session_state.problems = []
+if "answers" not in st.session_state:
+    st.session_state.answers = []
+if "current" not in st.session_state:
+    st.session_state.current = 0
+if "score" not in st.session_state:
+    st.session_state.score = 0
+if "times" not in st.session_state:
+    st.session_state.times = []
+if "start_time" not in st.session_state:
+    st.session_state.start_time = None
+if "running" not in st.session_state:
+    st.session_state.running = False
 
-# 레이아웃: 사이드바, 컬럼, 탭, 확장기
+# 문제 생성기
+def generate_problem():
+    op = random.choice(ops)
+    a = random.randint(min_val, max_val)
+    b = random.randint(min_val, max_val)
+
+    # 나눗셈은 정수 몫 또는 간단한 분수로 만듦 (나눗셈 방지: b != 0)
+    if op == "나눗셈":
+        b = random.randint(1, max(1, max_val))
+        # 답이 정수가 되도록 a를 b의 배수로 바꿈 (쉬움/보통) 또는 정수/한자리 소수 허용
+        if difficulty == "쉬움":
+            b_small = random.randint(1, 12)
+            a = b_small * random.randint(1, 12)
+            b = b_small
+        else:
+            # 보통/어려움은 나눗셈 결과를 소수 셋째자리에서 반올림
+            a = random.randint(min_val, max_val)
+            b = random.randint(1, max(1, max_val))
+    elif op == "곱셈":
+        if difficulty == "쉬움":
+            a = random.randint(2, 12)
+            b = random.randint(2, 12)
+        elif difficulty == "보통":
+            a = random.randint(2, 20)
+            b = random.randint(2, 20)
+        else:
+            a = random.randint(10, 50)
+            b = random.randint(2, 20)
+    else:
+        # 덧셈/뺄셈 기본
+        a = random.randint(min_val, max_val)
+        b = random.randint(min_val, max_val)
+
+    # 정답 계산
+    if op == "덧셈":
+        ans = a + b
+        text = f"{a} + {b} = ?"
+    elif op == "뺄셈":
+        ans = a - b
+        text = f"{a} − {b} = ?"
+    elif op == "곱셈":
+        ans = a * b
+        text = f"{a} × {b} = ?"
+    else:  # 나눗셈
+        # 보통/어려움은 소수로 표현
+        if difficulty == "쉬움":
+            ans = a // b
+            text = f"{a} ÷ {b} = ?  (정수 몫)"
+        else:
+            ans = round(a / b, 2)
+            text = f"{a} ÷ {b} = ?  (소수 둘째자리까지 반올림)"
+
+    hint = None
+    if show_hints:
+        if op == "덧셈":
+            hint = "큰 자리부터 더해보세요. 일의 자리부터 계산 후 올림을 확인하세요."
+        elif op == "뺄셈":
+            hint = "뒤에서부터 빌려서 계산하세요. 음수인지 아닌지 먼저 생각해보세요."
+        elif op == "곱셈":
+            hint = "분해해서 계산해보세요. 예: 12×9 = 12×10 − 12"
+        else:
+            hint = "나눗셈은 나눗수를 곱해서 확인하거나 소수 자릿수를 정하세요."
+
+    return {"text": text, "answer": ans, "op": op, "hint": hint}
+
+# 시작 버튼
+if st.button("새로운 세션 시작 🚀"):
+    if not ops:
+        st.warning("최소한 하나의 연산을 선택하세요.")
+    else:
+        st.session_state.problems = [generate_problem() for _ in range(num_questions)]
+        st.session_state.answers = [None] * num_questions
+        st.session_state.current = 0
+        st.session_state.score = 0
+        st.session_state.times = [None] * num_questions
+        st.session_state.start_time = time.time()
+        st.session_state.running = True
+        st.experimental_rerun()
+
+# 채점/입력 영역
+if st.session_state.running and st.session_state.problems:
+    idx = st.session_state.current
+    problem = st.session_state.problems[idx]
+
+    st.markdown(f"### 문제 {idx + 1} / {len(st.session_state.problems)}")
+    st.write(problem["text"])
+
+    if show_hints and problem.get("hint"):
+        with st.expander("힌트 🔎"):
+            st.write(problem["hint"])
+
+    # 타이머
+    time_start_q = st.session_state.times[idx] if st.session_state.times[idx] else None
+    if use_timer:
+        if f"timer_{idx}" not in st.session_state:
+            st.session_state[f"timer_{idx}"] = per_question_time
+        timer_placeholder = st.empty()
+        # 타이머 감소(비동기는 아님 — 페이지 새로고침 시 갱신 필요)
+        st.session_state[f"timer_{idx}"] = max(0, st.session_state[f"timer_{idx}"])
+        timer_placeholder.markdown(f"⏱️ 남은 시간: **{st.session_state[f'timer_{idx}']}초**")
+
+    user_input = st.text_input("정답을 입력하세요", key=f"input_{idx}")
+
+    col_a, col_b = st.columns([1, 1])
+    with col_a:
+        if st.button("제출 ✅", key=f"submit_{idx}"):
+            # 시간 기록
+            elapsed = 0
+            if st.session_state.start_time:
+                elapsed = time.time() - st.session_state.start_time
+            st.session_state.times[idx] = elapsed
+
+            # 정답 비교
+            try:
+                # 나눗셈 소수/정수 비교
+                if problem["op"] == "나눗셈" and difficulty != "쉬움":
+                    user_ans = round(float(user_input), 2)
+                else:
+                    user_ans = int(float(user_input))
+            except Exception:
+                st.error("숫자를 입력해 주세요 (예: 42 또는 3.14).")
+                user_ans = None
+
+            correct = False
+            if user_ans is not None:
+                if isinstance(problem["answer"], float):
+                    correct = abs(problem["answer"] - user_ans) < 0.01
+                else:
+                    correct = (problem["answer"] == user_ans)
+
+            if correct:
+                st.success("정답입니다! 🎉")
+                st.session_state.score += 1
+            else:
+                st.error(f"틀렸습니다. 정답: {problem['answer']}")
+
+            st.session_state.answers[idx] = {"given": user_ans, "correct": correct}
+            # 다음 문제 이동
+            if idx + 1 < len(st.session_state.problems):
+                st.session_state.current += 1
+                # reset per-question timer
+                if use_timer:
+                    st.session_state[f"timer_{idx + 1}"] = per_question_time
+                st.experimental_rerun()
+            else:
+                st.session_state.running = False
+                st.experimental_rerun()
+
+    with col_b:
+        if st.button("포기하고 답 보기 ❌", key=f"skip_{idx}"):
+            st.warning(f"정답: {problem['answer']}")
+            st.session_state.answers[idx] = {"given": None, "correct": False}
+            if idx + 1 < len(st.session_state.problems):
+                st.session_state.current += 1
+                if use_timer:
+                    st.session_state[f"timer_{idx + 1}"] = per_question_time
+                st.experimental_rerun()
+            else:
+                st.session_state.running = False
+                st.experimental_rerun()
+
+    # 자동 타임아웃 처리(간단한 형태)
+    if use_timer and st.session_state[f"timer_{idx}"] == 0 and st.session_state.answers[idx] is None:
+        st.warning("시간 초과! 다음 문제로 이동합니다.")
+        st.session_state.answers[idx] = {"given": None, "correct": False}
+        if idx + 1 < len(st.session_state.problems):
+            st.session_state.current += 1
+            st.session_state[f"timer_{idx + 1}"] = per_question_time
+            st.experimental_rerun()
+        else:
+            st.session_state.running = False
+            st.experimental_rerun()
+
+# 타이머 감소(페이지 상호작용 시마다 1초씩 감소 시뮬레이션)
+for i in range(len(st.session_state.problems)):
+    if use_timer and f"timer_{i}" in st.session_state and st.session_state[f"timer_{i}"] > 0 and st.session_state.current == i:
+        st.session_state[f"timer_{i}"] = st.session_state[f"timer_{i}"] - 1
+
+# 결과 요약
+if not st.session_state.running and st.session_state.problems:
+    st.markdown("## 결과 요약 📝")
+    correct_count = sum(1 for a in st.session_state.answers if a and a.get("correct"))
+    total = len(st.session_state.problems)
+    st.metric("정답", f"{correct_count} / {total}")
+
+    # 시간 통계
+    times = [t for t in st.session_state.times if t is not None]
+    if times:
+        avg_time = sum(times) / len(times)
+        st.write(f"평균 응답 시간: {avg_time:.1f}초")
+
+    # 상세 내역
+    with st.expander("문제별 결과 보기"):
+        for i, p in enumerate(st.session_state.problems):
+            ans = st.session_state.answers[i]
+            ok = ans and ans.get("correct")
+            status = "✅ 정답" if ok else "❌ 오답"
+            given = ans.get("given") if ans else None
+            st.write(f"{i+1}. {p['text']} — 정답: {p['answer']} / 입력: {given} — {status}")
+
+    # 재시작 버튼
+    if st.button("다시 풀기 ↺"):
+        st.session_state.problems = []
+        st.session_state.answers = []
+        st.session_state.current = 0
+        st.session_state.score = 0
+        st.session_state.times = []
+        st.session_state.start_time = None
+        st.session_state.running = False
+        st.experimental_rerun()
+
+# 간단한 팁 (항상 보이는 안내)
 st.markdown("---")
-st.markdown("## 레이아웃 구성 예시(divs)")
+st.info("팁: 문제를 소리 내어 읽고 큰 자리수부터 빠르게 계산하는 연습을 하세요. 시간을 재서 속도를 점점 단축해보세요.")
 
-with st.sidebar:
-    # 각주: 사이드바는 페이지 레이아웃과 독립적으로 상호작용 요소를 가집니다.
-    st.header("사이드바")
-    st.write("사이드바에 넣을 수 있는 위젯들")
-    sidebar_choice = st.selectbox("사이드바 선택", ["옵션 A", "옵션 B", "옵션 C"]) 
-
-col1, col2, col3 = st.columns([2, 1, 1])
-
-with col1:
-    st.subheader("컬럼 1: 입력(폼/위젯)")
-    # 입력 위젯 예시들
-    if st.button("버튼 클릭" ):
-        st.write("버튼이 클릭되었습니다")
-    agree = st.checkbox("체크박스 선택")  # 각주: 체크박스는 불리언 값을 반환
-    choice = st.radio("라디오 선택", ("사과", "바나나", "체리"))
-    sel = st.selectbox("셀렉트박스", ["옵션 1", "옵션 2", "옵션 3"]) 
-    multi = st.multiselect("멀티셀렉트", ["빨강", "초록", "파랑"], default=["빨강"]) 
-
-with col2:
-    st.subheader("컬럼 2: 슬라이더/입력")
-    # 수치 입력 관련 위젯
-    number = st.number_input("숫자 입력", min_value=0, max_value=100, value=10)
-    text = st.text_input("한 줄 텍스트 입력", "여기에 입력")
-    area = st.text_area("여러 줄 텍스트", "여러 줄 텍스트 예시")
-    slider = st.slider("범위 슬라이더", 0, 100, (20, 80))
-    select_slider = st.select_slider("선택 슬라이더", options=["초급", "중급", "고급"]) 
-
-with col3:
-    st.subheader("컬럼 3: 날짜/파일/색상")
-    d = st.date_input("날짜 입력", datetime.now())
-    t = st.time_input("시간 입력", datetime.now().time())
-    uploaded = st.file_uploader("파일 업로드")
-    color = st.color_picker("색 선택", "#00f900")
-
-with st.expander("더 많은 레이아웃 요소 보기"):
-    st.write("여기엔 `st.container()`, `st.empty()` 등을 넣을 수 있습니다.")
-    placeholder = st.empty()  # 각주: 빈 자리(플레이스홀더)를 만들어 추후에 업데이트 가능
-    placeholder.text("이 텍스트는 placeholder로 나중에 바꿀 수 있습니다.")
-
-# 탭 예시
-tab1, tab2 = st.tabs(["탭 A", "탭 B"])
-with tab1:
-    st.write("탭 A 내용")
-with tab2:
-    st.write("탭 B 내용")
-
-st.markdown("---")
-
-# 미디어: 이미지, 오디오, 비디오
-st.markdown("## 미디어")
-st.image("https://static.streamlit.io/examples/dice.jpg", caption="샘플 이미지")
-st.audio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3")
-st.video("https://www.youtube.com/watch?v=JwSS70SZdyM")
-
-st.markdown("---")
-
-# 데이터 표시 및 차트
-st.markdown("## 데이터와 차트")
-df = pd.DataFrame(np.random.randn(50, 3), columns=["a", "b", "c"])  # 각주: 샘플 데이터
-st.dataframe(df.head())  # 각주: 인터랙티브 데이터프레임
-st.table(df.describe())
-
-st.line_chart(df)
-st.area_chart(df)
-st.bar_chart(df.abs().head())
-
-# 지도 예시 (위도/경도 데이터 필요)
-map_data = pd.DataFrame(
-    np.random.randn(100, 2) / [50, 50] + [37.76, -122.4], columns=["lat", "lon"]
-)
-st.map(map_data)
-
-st.markdown("---")
-
-# 차트 라이브러리 예시(선택적): Plotly/Altair 사용법은 추가 패키지가 필요합니다.
-
-# 진행상태, 스피너, 메트릭
-st.markdown("## 유틸리티: 진행상태, 스피너, 메트릭")
-progress_bar = st.progress(0)
-for i in range(100):
-    progress_bar.progress(i + 1)
-
-with st.spinner("로딩 중..."):
-    import time
-
-    time.sleep(0.2)
-st.success("로딩 완료")
-
-st.metric(label="현재 온도", value="21°C", delta="+1.2°C")
-
-st.markdown("---")
-
-# 폼(form) 사용 예시
-st.markdown("## 폼 (제출형 위젯)")
-with st.form(key="my_form"):
-    name = st.text_input("이름")
-    age = st.number_input("나이", min_value=0, max_value=120, value=30)
-    submit = st.form_submit_button("제출")
-    if submit:
-        st.write(f"안녕하세요 {name}님, {age}세군요!")
-
-# 캐시 사용 예시: @st.cache_data (데이터 캐싱)
-@st.cache_data
-def expensive_computation(n):
-    # 각주: 시간이 오래 걸리는 연산을 시뮬레이션
-    return np.random.randn(n, 2)
-
-data = expensive_computation(1000)
-st.write("캐시된 데이터 샘플:")
-st.write(data[:5])
-
-st.markdown("---")
-
-# 세션 상태 예시
-st.markdown("## 세션 상태 (상태 유지)")
-if "count" not in st.session_state:
-    st.session_state.count = 0
-
-if st.button("세션 카운트 증가"):
-    st.session_state.count += 1
-st.write("세션 카운트:", st.session_state.count)
-
-st.markdown("---")
-
-st.write("데모 끝 — 각 위젯의 동작을 직접 바꿔보며 공부하세요.")
-
+# 상태 (디버그용, 필요 없으면 주석 처리 가능)
+# st.write(st.session_state)
